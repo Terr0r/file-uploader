@@ -1,0 +1,456 @@
+/* 
+  Author	: Dale McKay
+	Email	: dalesmckay@gmail.com
+	Purpose	: To simplify monitoring of player activity and export a bb-coded summary for mail/forum.
+	Credit	: Based on a concept by an unKnown author.
+	Todo	:
+		* Persist the Stat Checkbox settings
+	Notes	:
+	
+
+	######################
+	Client Launcher (live):
+	######################
+	
+javascript:(window.main||self).$.getScript('https://www.dropbox.com/s/4j8frol8xguu6wv/tribe_member_management.js',function(){var script=new ManageTribe();script.execute();});void(0);
+
+____________________________________________________________
+
+Copyright (C) 2011 Dale McKay, all rights reserved
+version 1.0, 4 May 2011
+
+This software is provided 'as-is', without any express or implied warranty. In no event will the author be held liable for any damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
+The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
+Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
+This notice may not be removed or altered from any source distribution.
+____________________________________________________________
+*/
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Class: ManageTribe
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+function ManageTribe(){
+	var win=(window.main||self),$=win.$;
+
+	var script={
+		name:'Stam Lid Management Script',
+		version:1.07,
+		minGameVersion:7.00,
+		author:{
+			name:'dalesmckay',
+			email:'dalesmckay@gmail.com',
+			url:'http://www.micservice.nl'
+		},
+		credit:'', //'(based on a concept by an unKnown author)',
+		debugEnabled:false,
+		runOnce:true
+	};
+
+	var tribe={
+		tag:$('#content_value h2').text(),
+		members:[],
+		active:[],
+		inactive:[],
+		idle:[],
+		birthday:[],
+		vacation:[],
+		banned:[]
+	};
+	
+	var globalRankFix=($('th a[href*="order=rank"]').length>1)?1:0;
+
+	// ........................................................................
+	function fnDebug(msg){if(!script.debugEnabled){return;}$('body').append('<span>'+msg+'</span><br/>');}
+	// ........................................................................
+	function fnDismiss(index){
+		var player=tribe.members[index];
+		if(!player){
+			return;
+		}
+
+		if(player.isDuke){
+			fnDebug('ACTION: '+tribe.members[index].name+' is a Duke and can not be dismissed.');
+			alert('You can not dismiss a Duke');
+			return;
+		}
+
+		if(confirm('Dismiss: '+tribe.members[index].name+'?')){
+			var playerID=win.game_data.player.id;
+			var params={
+				'player':player.id,
+				'ally_action':'kick'
+			};
+			params['player_id['+playerID+'][id]']=playerID;
+			if(player.isDuke){params['player_id['+playerID+'][found]']='on';}
+			if(player.isBaron){params['player_id['+playerID+'][lead]']='on';}
+			if(player.isRecruiter){params['player_id['+playerID+'][invite]']='on';}
+			if(player.isDiplomat){params['player_id['+playerID+'][diplomacy]']='on';}
+			if(player.canMassMail){params['player_id['+playerID+'][mass_mail]']='on';}
+			if(player.isForumMod){params['player_id['+playerID+'][forum_mod]']='on';}
+			if(player.isHiddenMod){params['player_id['+playerID+'][internal_forum]']='on';}
+			if(player.isTrusted){params['player_id['+playerID+'][trusted_member]']='on';}
+		
+			$.post(
+				win.game_data.link_base_pure.replace(/screen\=\w*/,'screen=ally&mode=members&action=mod&h='+win.game_data.csrf),
+				params,
+				function(data){
+					var error=$(data).find('#error').text();
+					if(error){
+						fnDebug('ERROR: '+error);
+						alert('ERROR: '+error);
+						return;
+					}
+				
+					var playerName=tribe.members[index].name;
+					
+					$('#form_rights table:eq(0) tr.lit:eq('+index+')').remove();
+					tribe.members.splice(index,1);
+
+					$('#form_rights table:eq(0) tr.lit:gt('+index+') td:nth-child(3)').each(function(i,e){
+						$(e).text(parseInt($(e).text(),10)-1);
+					});
+	
+					fnDebug('ACTION: '+playerName+' was dismissed');
+				}
+			);
+		}
+	} //fnDismiss
+	// ........................................................................
+	function fnExportStatistics(){
+		var url=('http://%%MARKETtwstats.com/').replace(/\%\%MARKET/ig,(win.game_data.market=='en')?'':(win.game_data.market+'.'))+win.game_data.world+'/image.php';
+		var cellTemplate=url+'?type=playergraph&graph=%%MODE&id=%%ID';
+		var template='[*]%%NAME[|]%%POINTS[|]%%VILLAGES%%POINT_STATS%%VILLAGE_STATS%%ODA_STATS%%ODD_STATS\n';
+		
+		var stats = '';
+		
+		$.each(tribe.members,function(i,e){
+			stats+=template
+				.replace(/\%\%NAME/ig,'[player]'+e.name+'[/player]')
+				.replace(/\%\%POINTS/ig,e.points)
+				.replace(/\%\%VILLAGES/ig,e.villages)
+				.replace(/\%\%ODA_STATS/ig,$('#cbODA').is(':checked')?('[|][img]'+cellTemplate.replace(/\%\%MODE/ig,'oda').replace(/\%\%ID/ig,e.id)+'[/img]'):'')
+				.replace(/\%\%ODD_STATS/ig,$('#cbODD').is(':checked')?('[|][img]'+cellTemplate.replace(/\%\%MODE/ig,'odd').replace(/\%\%ID/ig,e.id)+'[/img]'):'')
+				.replace(/\%\%POINT_STATS/ig,$('#cbPoints').is(':checked')?('[|][img]'+cellTemplate.replace(/\%\%MODE/ig,'points').replace(/\%\%ID/ig,e.id)+'[/img]'):'')
+				.replace(/\%\%VILLAGE_STATS/ig,$('#cbVillages').is(':checked')?('[|][img]'+cellTemplate.replace(/\%\%MODE/ig,'villages').replace(/\%\%ID/ig,e.id)+'[/img]'):'')
+			;
+		});
+
+		return stats;		
+	} //fnExportStatistics
+	// ........................................................................
+	function fnExportSummary(){
+		var template='[*]%%TOTAL[|]%%INACTIVE - (%%IRATE%)[|]%%IDLE - (%%SRATE%)[|]%%ACTIVE - (%%ARATE%)[|]%%SAT - (%%XRATE%)\n';
+		var total=tribe.members.length;
+		
+		return template
+			.replace(/\%\%TOTAL/ig,total)
+			.replace(/\%\%INACTIVE/ig,tribe.inactive.length)
+			.replace(/\%\%IRATE/ig,(tribe.inactive.length/total*100).toFixed(2))
+			.replace(/\%\%IDLE/ig,tribe.idle.length)
+			.replace(/\%\%SRATE/ig,(tribe.idle.length/total*100).toFixed(2))
+			.replace(/\%\%ACTIVE/ig,tribe.active.length)
+			.replace(/\%\%ARATE/ig,(tribe.active.length/total*100).toFixed(2))
+			.replace(/\%\%SAT/ig,tribe.vacation.length)
+			.replace(/\%\%XRATE/ig,(tribe.vacation.length/total*100).toFixed(2))
+		;
+	} //fnExportSummary
+	// ........................................................................
+	function fnStatusDesc(activity){
+		var result='???';
+		
+		$.each(activity,function(i,e){
+			switch(e){
+				case 'green.png':
+					result='[color=green]Active[/color]';
+					return true;
+					
+				case 'yellow.png':
+					result='[color=orange]Idle[/color]';
+					return true;
+					
+				case 'red.png':
+					result='[b][color=red]Inactive[/color][/b]';
+					return true;
+
+				defult:
+					break;
+			}
+		});
+		
+		return result;
+	} // fnStatusDesc
+	// ........................................................................
+	function fnStatusColour(activity){
+		var result='black';
+		
+		$.each(activity,function(i,e){
+			switch(e){
+				case 'green.png':
+					result='green';
+					return true;
+					
+				case 'yellow.png':
+					result='yellow';
+					return true;
+					
+				case 'red.png':
+					result='red';
+					return true;
+
+				defult:
+					break;
+			}
+		});
+		
+		return result;
+	} // fnStatusColour
+	// ........................................................................
+	function fnExportRow(group,showActivity){
+		var template=showActivity?'[*]%%ACTIVITY[|]':'[*]'+'%%NAME[|]%%POINTS[|]%%VILLAGES[|]%%SITTER[|]%%COMMENT\n';
+		var ii,player,row='';
+	
+		$.each(group,function(i,e){
+			player=tribe.members[e];
+			
+			row+=template
+				.replace(/\%\%ACTIVITY/ig,fnStatusDesc(player.activity))
+				.replace(/\%\%NAME/ig,'[player]'+player.name+'[/player]')
+				.replace(/\%\%POINTS/ig,player.points)
+				.replace(/\%\%VILLAGES/ig,player.villages)
+				.replace(/\%\%SITTER/ig,player.sitter?('[player]'+player.sitter+'[/player]'):'')
+				.replace(/\%\%COMMENT/ig,(player.sitter&&(player.sitterTribe!=tribe.tag))?('[b][color=red]Other Tribe: [/color][/b]'+player.sitterTribe):'')
+			;
+		});
+
+		return row;
+	} // fnExportRow
+	// ........................................................................
+	function fnRefreshOutput(){		
+		var output=
+			'[B]Stam Activiteit[/B]\n\n'+
+			'[table]\n'+
+			'[**]Leden[||]Inactief (7+ days)[||]Idle (2+ days)[||]Actief[||]Sat[/**]\n'+
+			fnExportSummary()+
+			'[/table]\n\n'+
+/*
+			'[B]Speler Activiteit[/B]\n\n'+
+			'[spoiler]\n'+
+			'[table]\n'+
+			'[**]Activity[||]Speler[||]Punten[||]Dorpen[||]Vakantievervanging[||]Commentaar[/**]\n'+
+			fnExportRow(tribe.inactive,true)+
+			fnExportRow(tribe.idle,true)+
+			fnExportRow(tribe.active,true)+
+			'[/table]\n\n'+
+			'[/spoiler]\n'+
+*/
+			((tribe.inactive.length>0)?(
+				'[B]Inactieve Leden[/B]\n\n'+
+				'[spoiler]\n'+
+				'[table]\n'+
+				'[**]Speler[||]Punten[||]Dorpen[||]Vakantievervanging[||]Commentaar[/**]\n'+
+				fnExportRow(tribe.inactive,false)+
+				'[/table]\n'+
+				'[/spoiler]\n\n'
+			):'')+
+			
+			((tribe.idle.length>0)?(
+				'[B]Idle Leden[/B]\n\n'+
+				'[spoiler]\n'+
+				'[table]\n'+
+				'[**]Speler[||]Punten[||]Dorpen[||]Vakantievervanging[||]Commentaar[/**]\n'+
+				fnExportRow(tribe.idle,false)+
+				'[/table]\n'+
+				'[/spoiler]\n\n'
+			):'')+
+			
+			((tribe.active.length>0)?(
+				'[B]Actieve Leden[/B]\n\n'+
+				'[spoiler]\n'+
+				'[table]\n'+
+				'[**]Speler[||]Punten[||]Dorpen[||]Vakantievervanging[||]Commentaar[/**]\n'+
+				fnExportRow(tribe.active,false)+
+				'[/table]\n'+
+				'[/spoiler]\n\n'
+			):'')+
+			
+			'[B]Speler Statistics[/B]\n\n'+
+			'[spoiler]\n'+
+			'[table]\n'+
+			'[**]Speler[||]Punten[||]Dorpen'+
+			($('#cbODA').is(':checked')?'[||]ODA Stats':'')+
+			($('#cbODD').is(':checked')?'[||]ODD Stats':'')+
+			($('#cbPoints').is(':checked')?'[||]Point Stats':'')+
+			($('#cbVillages').is(':checked')?'[||]Village Stats':'')+
+			'[/**]\n'+
+			fnExportStatistics()+
+			'[/table]\n'+
+			'[/spoiler]\n\n'+
+			
+			'\n\n'+
+			'Valid @ '+$.trim($('.server_info').text().match(/\|\s*(.+)/)[1])+'\n'+
+			'--\n'+
+			'by [url="'+script.author.url+'"]'+script.author.name+'[/url]\n\n'
+		;
+		
+		$('#dsmSummary').val(output);
+	} // fnRefreshOutput
+	// ........................................................................
+	function fnManageMembers(){
+		var url=('http://%%MARKET.twstats.com/').replace(/\%\%MARKET/ig,(win.game_data.market=='en')?'www':win.game_data.market)+'/image.php';
+		var template='%%ODA%%ODD%%POINTS%%VILLAGES';
+		var cellTemplate='<td class="dsm%%MODE" style="display:none;"><img src="%%URL?type=playergraph&graph=%%MODE&%%ID&s=%%WORLD" style="width:180px;height:96px;"></img></td>';
+	
+		var srcHTML=template
+			.replace(/\%\%ODA/ig,'<th class="dsmoda" style="display:none;">ODA Stats</th>')
+			.replace(/\%\%ODD/ig,'<th class="dsmodd" style="display:none;">ODD Stats</th>')
+			.replace(/\%\%POINTS/ig,'<th class="dsmpoints" style="display:none;">Punten Stats</th>')
+			.replace(/\%\%VILLAGES/ig,'<th class="dsmvillages" style="display:none;">Dorpen Stats</th>')
+		;
+
+		template=template
+			.replace(/\%\%POINTS/ig,cellTemplate.replace(/\%\%MODE/ig,'points'))
+			.replace(/\%\%VILLAGES/ig,cellTemplate.replace(/\%\%MODE/ig,'villages'))
+			.replace(/\%\%ODA/ig,cellTemplate.replace(/\%\%MODE/ig,'oda'))
+			.replace(/\%\%ODD/ig,cellTemplate.replace(/\%\%MODE/ig,'odd'))
+			.replace(/\%\%URL/ig,url)
+			.replace(/\%\%WORLD/ig,win.game_data.world)
+		;
+		
+		$('\
+			<div id="dsmStats">\
+				<input id="cbODA" type="checkbox" value="dsmoda"/><label for="cbODA">ODA Stats</label>\
+				<input id="cbODD" type="checkbox" value="dsmodd"/><label for="cbODD">ODD Stats</label>\
+				<input id="cbPoints" type="checkbox" value="dsmpoints"/><label for="cbPoints">Punten Stats</label>\
+				<input id="cbVillages" type="checkbox" value="dsmvillages"/><label for="cbVillages">Dorpen Stats</label>\
+			</div>\
+		').insertBefore('#form_rights table:eq(0)');
+		
+		$('#cbPoints').click(function(){$(this).is(':checked')?$('.'+this.value).show('fast'):$('.'+this.value).hide('fast');fnRefreshOutput();});
+		$('#cbVillages').click(function(){$(this).is(':checked')?$('.'+this.value).show('fast'):$('.'+this.value).hide('fast');fnRefreshOutput();});
+		$('#cbODA').click(function(){$(this).is(':checked')?$('.'+this.value).show('fast'):$('.'+this.value).hide('fast');fnRefreshOutput();});
+		$('#cbODD').click(function(){$(this).is(':checked')?$('.'+this.value).show('fast'):$('.'+this.value).hide('fast');fnRefreshOutput();});
+
+
+		var hdr=$('table[class*="vis"]:has(td a[href*="info_player"]) tr:eq(0)');
+		hdr.html(hdr.html()+srcHTML);
+		$('<th>Action</th>').insertAfter($('#form_rights table:eq(0) th:eq(0)'));
+		
+		$('#form_rights table:eq(0) tr:has(td.lit-item)').each(function(i,e){
+			var player={
+				//activity:$(e.cells[0]).find('img').attr('src').match(/\w+\.png/ig),
+				activity:$(e.cells[0]).html().match(/\w+\.png/ig),
+				id:$(e.cells[0]).find(':radio.show_toggle').val(),
+				name:$(e.cells[0]).find('a').text(),
+
+				rank:$(e.cells[1]).text(),
+				points:$(e.cells[2]).text().replace(/\./g,''),
+				globalRank:(globalRankFix>0)?$(e.cells[3]).text():undefined,
+				villages:$(e.cells[3+globalRankFix]).text().replace(/\./g,''),
+				isDuke:!!$(e.cells[4+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isBaron:!!$(e.cells[5+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isRecruiter:!!$(e.cells[6+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isDiplomat:!!$(e.cells[7+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				canMassMail:!!$(e.cells[8+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isForumMod:!!$(e.cells[9+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isHiddenMod:!!$(e.cells[10+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isTrusted:!!$(e.cells[11+globalRankFix]).find('img').attr('src').match(/green\.png/i),
+				isBirthday:!!$(e.cells[0]).html().match(/birthday.png/i),
+				isBanned:!!$(e.cells[0]).html().match(/banned.png/i),
+
+/* TODO: ******************** */		
+				isSitting:undefined,
+/* ************************** */		
+	
+				sitter:$(e.cells[12+globalRankFix]).find('a').text(),
+				sitterTribe:$(e.cells[12+globalRankFix]).find('a').attr('title')
+			};
+			
+			tribe.members.push(player)-1;
+
+			$.each(player.activity,function(i2,e2){	
+				switch(e2){
+					case 'green.png':
+						tribe.active.push(i);
+						break;
+			
+					case 'yellow.png':
+						tribe.idle.push(i);
+						break;
+			
+					case 'red.png':
+						tribe.inactive.push(i);
+						break;
+			
+					case 'vacation.png':
+						tribe.vacation.push(i);
+						break;
+			
+					case 'birthday.png':
+						tribe.birthday.push(i);
+						break;
+			
+					case 'banned.png':
+						tribe.banned.push(i);
+						break;
+						
+					default:
+						break;
+				}
+			});
+	
+			if(player.sitter){
+				$(e.cells[12+globalRankFix]).removeClass('lit-item');
+				$(e.cells[12+globalRankFix]).css({backgroundColor:(player.sitterTribe==tribe.tag)?'blue':'red'});
+				$(e.cells[12+globalRankFix]).find('a').css({color:'white'});
+			}
+		
+		
+			$('<td style="background-color:'+fnStatusColour(player.activity)+';">'+(player.isDuke?'':'<input type="button" value="kick" id="dsmKick">')+'</td>').insertAfter($(e.cells[0]));
+			$('#dsmKick').click(function(){fnDismiss(i);});
+
+			e.innerHTML+=template.replace(/\%\%ID/ig,'id='+player.id);
+
+			$(e).find('td').css({border:'1px '+fnStatusColour(player.activity)+' solid'});
+		});
+
+		var authorURL=script.author.url?('<a href="'+script.author.url+'" target="_blank">'+script.author.name+'</a>'):script.author.name;
+
+		$('body').append('\
+			<br/><br/>\
+			'+authorURL + '\'s ' + script.name + ': v' + script.version.toFixed(2) + (script.credit?('<br/>'+script.credit):'')+'<br/><br/>\
+			<span style="font-weight:bold;">BB-Coded voor Mail/Forum</span><br/>\
+			<textarea id="dsmSummary" wrap="off" readonly="yes" cols="80" rows="25" style="width:95%;background-color:transparent;" onfocus="this.select();"></textarea>\
+			<br/><br/><br/><br/><br/>\
+		');
+
+		fnRefreshOutput();
+	} // fnManageMembers
+	// ........................................................................
+
+
+
+	return{
+		execute:function(){
+			if($('#dsmSummary').length>0){
+				return;
+			}
+			
+			var url=win.location.href;
+
+			if(url.match(/screen\=ally/i)&&url.match(/mode\=members/i)){
+				if($('#form_rights table.vis:eq(0) tr th a').length<(13+globalRankFix)){
+					alert('This Script can only be used by the Tribe Aristocracy');
+				}
+				else{
+					fnManageMembers();
+				}
+			}
+			else if(confirm('Dit script draair van de:\n\t* Stam-> Leden Scherm!\n\nGa daar nu heen?')){
+				win.location=win.game_data.link_base_pure.replace(/screen\=\w*/i,'screen=ally&mode=members');
+			}
+		}
+	};
+} // ManageTribe::constructor
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
